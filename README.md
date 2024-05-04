@@ -1,15 +1,15 @@
 # generative-qa-llm
 An attempt to solve a traditionally Extractive QA task with Generative Text methods
 
-For RACE dataset - 
+## For RACE dataset - 
 
-train2.py
-MyDataset2.py
-RACE_Dataset.py
+train2.py <br>
+MyDataset2.py<br>
+RACE_Dataset.py<br>
 
-To run - py train2.py
+### To run - py train2.py
 
-GitHub code(SelfRC) - 
-Link - https://github.com/nunziati/bert-vs-t5-for-question-answering
-train.py
-MyDataset.py
+## GitHub code(SelfRC) - 
+Link - https://github.com/nunziati/bert-vs-t5-for-question-answering <br>
+train.py<br>
+MyDataset.py<br>
