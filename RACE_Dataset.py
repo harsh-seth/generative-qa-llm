@@ -34,6 +34,33 @@ test_correct_answer = answer_engineering(test_answer, test_options)
 validation_correct_answer = answer_engineering(validation_answer, validation_options)
 
 
+def get_questions(mode):
+    if mode=='train':
+        return train_question
+    elif mode=='val':
+        return validation_question
+    else:
+        return test_question
+    
+
+def get_answer(mode):
+    if mode=='train':
+        return train_correct_answer
+    elif mode=='val':
+        return validation_correct_answer
+    else:
+        return test_correct_answer
+    
+
+def get_context(mode):
+    if mode=='train':
+        return train_article
+    elif mode=='val':
+        return validation_article
+    else:
+        return test_correct_answer
+
+
 def construct_dataset(context, question, answer):
     data: List[str] = []
     for i in range(100):
