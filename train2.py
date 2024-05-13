@@ -1,17 +1,14 @@
 from __future__ import print_function
-from typing import List, Tuple
 from tqdm import tqdm
 import torch
 
-from datasets import load_dataset
 from transformers import PreTrainedTokenizer, T5ForConditionalGeneration, T5Tokenizer, AdamW, set_seed
 from torch.utils.data import DataLoader
 import argparse
 
 from MyDataset2 import Dataset
-import MyDataset2
-
-from RACE_Dataset import *
+from RACE_Dataset import RaceDataset
+from inference import getTestAccuracy
 
 def parse_command_line_arguments():
 
@@ -41,6 +38,9 @@ def parse_command_line_arguments():
 
     parser.add_argument('--seed', type=int, default=7,
                         help='Seed for random initialization (default: 7)')
+    
+    parser.add_argument('--max_records_cut', type=float, default=1.0,
+                    help='Fraction of records to train and validate on (range: 0.0 - 1.0, default: 1.0 - i.e. all records)')
 
     parsed_arguments = parser.parse_args()
 
@@ -74,6 +74,7 @@ def train(model: T5ForConditionalGeneration, tokenizer: PreTrainedTokenizer, opt
 
     f1_old: int = 0
     for epoch in range(num_train_epochs):
+        model.train()
         epoch_train_loss = 0.
         for contexts,questions,answers in tqdm(my_trainset_dataloader):
             optimizer.zero_grad()
@@ -112,6 +113,10 @@ def train(model: T5ForConditionalGeneration, tokenizer: PreTrainedTokenizer, opt
         print(f"epoch={epoch + 1}/{num_train_epochs}")
         print(f"\t Train loss = {epoch_train_loss/len(train_set):.4f}")
 
+        if epoch+1 % 2 == 0:
+            model.save_pretrained(f'results/{model.name_or_path}/model/checkpoint-{epoch+1}')
+            tokenizer.save_pretrained(f'results/{model.name_or_path}/tokenizer/checkpoint-{epoch+1}')
+
         model.eval()
         with torch.no_grad():
             model_predictions_encoded = []
@@ -145,16 +150,11 @@ def train(model: T5ForConditionalGeneration, tokenizer: PreTrainedTokenizer, opt
                 model_predictions_encoded += model_predictions.tolist()
                 target_encoded += encoded_targets.tolist()
         f1, exact_match = validation_set.evaluate(model_predictions_encoded, target_encoded)
-
-        print(f"\t Validation F1 = {f1:.2f}, EM = {exact_match:.2f}")
+        print(f"\t Validation F1 = {f1:.2f}, Exact Match (EM) = {exact_match:.2f}")
         if f1 > f1_old :
             model.save_pretrained(f'results/{model.name_or_path}/model/best-f1')
             tokenizer.save_pretrained(f'results/{model.name_or_path}/tokenizer/best-f1')
             f1_old = f1
-        if epoch+1 % 10 == 0:
-            model.save_pretrained(f'results/{model.name_or_path}/model/checkpoint-{epoch+1}')
-            tokenizer.save_pretrained(f'results/{model.name_or_path}/tokenizer/checkpoint-{epoch+1}')
-        model.train()
 
     model.save_pretrained(
         f'results/{model.name_or_path}/model/checkpoint-{epoch+1}')
@@ -171,27 +171,28 @@ if __name__ == '__main__':
     # Set seed
     set_seed(args.seed)
 
-    # _data = load_dataset("duorc", "SelfRC")
-
     model = T5ForConditionalGeneration.from_pretrained(args.t5_model)
     tokenizer = T5Tokenizer.from_pretrained(args.t5_model)
     # creating the optimizer
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
 
-    train_set = get_dataset('train')
-
+    raceDataset = RaceDataset()
+    train_set = raceDataset.get_dataset('train', num_records=int(87853*args.max_records_cut))
     train_set = Dataset(train_set, tokenizer)
-
     
-    validation_set = get_dataset('val')
-
+    validation_set = raceDataset.get_dataset('val', num_records=int(4886*args.max_records_cut))
     validation_set = Dataset(validation_set, tokenizer)
 
-
+    test_set = raceDataset.get_dataset('test')
+    test_set = Dataset(test_set, tokenizer)
 
     train(model=model,
           tokenizer=tokenizer,
           optimizer=optimizer,
           train_set=train_set,
           validation_set=validation_set,
-          num_train_epochs=args.epochs, device=args.device, batch_size=args.batch_size)
+          num_train_epochs=args.epochs, 
+          device=args.device, 
+          batch_size=args.batch_size)
+
+    getTestAccuracy(model, tokenizer, test_set, batch_size=args.batch_size, workers=args.workers)
