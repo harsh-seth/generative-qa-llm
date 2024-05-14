@@ -16,7 +16,7 @@ def generateInference(model, tokenizer, input_str):
         output = tokenizer.decode(output[0], skip_special_tokens=True)
     return output
 
-def getTestAccuracy(model, tokenizer, test_set, batch_size=4, workers=0, max_input_length=512):
+def getTestAccuracy(model, tokenizer, test_set, batch_size=4, workers=0, max_input_length=512, device='cuda', results_file_path="metrics.csv"):
     test_dataloader = DataLoader(test_set, batch_size=batch_size,
                                           num_workers=workers, collate_fn=lambda data: test_set.pack_minibatch(data))
     
@@ -54,6 +54,8 @@ def getTestAccuracy(model, tokenizer, test_set, batch_size=4, workers=0, max_inp
             target_encoded += encoded_targets.tolist()
     f1, exact_match = test_set.evaluate(model_predictions_encoded, target_encoded)
     print(f"\t Validation F1 = {f1:.2f}, EM = {exact_match:.2f}")
+    with open(results_file_path, 'a') as results_file:
+        results_file.write(f"test,{len(model_predictions_encoded)},{f1:.2f},{exact_match:.2f}\n")
 
 
 

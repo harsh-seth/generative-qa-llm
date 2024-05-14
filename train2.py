@@ -154,6 +154,10 @@ def train(model: T5ForConditionalGeneration, tokenizer: PreTrainedTokenizer, opt
                 target_encoded += encoded_targets.tolist()
         f1, exact_match = validation_set.evaluate(model_predictions_encoded, target_encoded)
         print(f"\t Validation F1 = {f1:.2f}, Exact Match (EM) = {exact_match:.2f}")
+        
+        with open(f"{save_path_prefix}/metrics.csv", 'a') as results_file:
+            results_file.write(f"validation,{len(model_predictions_encoded)},{f1:.2f},{exact_match:.2f},{epoch}\n")
+
         if f1 > f1_old :
             model.save_pretrained(f'{save_path_prefix}/model/best-f1')
             tokenizer.save_pretrained(f'{save_path_prefix}/tokenizer/best-f1')
@@ -201,4 +205,4 @@ if __name__ == '__main__':
           starting_epoch=args.resume_from_epoch if args.resume_from_epoch else 0,
           save_path_prefix=save_path_prefix)
 
-    getTestAccuracy(model, tokenizer, test_set, batch_size=args.batch_size, workers=args.workers)
+    getTestAccuracy(model, tokenizer, test_set, batch_size=args.batch_size, workers=args.workers, device=args.device, results_file_path=f"{save_path_prefix}/metrics.csv")
