@@ -41,13 +41,16 @@ def parse_command_line_arguments():
     
     parser.add_argument('--max_records_cut', type=float, default=1.0,
                     help='Fraction of records to train and validate on (range: 0.0 - 1.0, default: 1.0 - i.e. all records)')
-
+    
+    parser.add_argument('--resume_from_epoch', type=int, default=None,
+                help='Resume from checkpoint @ specified epoch number')
+    
     parsed_arguments = parser.parse_args()
 
     return parsed_arguments
 
 
-def train(model: T5ForConditionalGeneration, tokenizer: PreTrainedTokenizer, optimizer: AdamW, train_set: Dataset, validation_set: Dataset, num_train_epochs: int, device: str, batch_size: int, max_input_length: int = 512):
+def train(model: T5ForConditionalGeneration, tokenizer: PreTrainedTokenizer, optimizer: AdamW, train_set: Dataset, validation_set: Dataset, num_train_epochs: int, device: str, batch_size: int, max_input_length: int = 512, starting_epoch = 0, save_path_prefix = "results/t5-pretrained"):
     """_summary_
 
     Args:
@@ -73,7 +76,7 @@ def train(model: T5ForConditionalGeneration, tokenizer: PreTrainedTokenizer, opt
     model.to(device)
 
     f1_old: int = 0
-    for epoch in range(num_train_epochs):
+    for epoch in range(starting_epoch, num_train_epochs):
         model.train()
         epoch_train_loss = 0.
         for contexts,questions,answers in tqdm(my_trainset_dataloader):
@@ -114,8 +117,8 @@ def train(model: T5ForConditionalGeneration, tokenizer: PreTrainedTokenizer, opt
         print(f"\t Train loss = {epoch_train_loss/len(train_set):.4f}")
 
         if epoch+1 % 2 == 0:
-            model.save_pretrained(f'results/{model.name_or_path}/model/checkpoint-{epoch+1}')
-            tokenizer.save_pretrained(f'results/{model.name_or_path}/tokenizer/checkpoint-{epoch+1}')
+            model.save_pretrained(f'{save_path_prefix}/model/checkpoint-{epoch+1}')
+            tokenizer.save_pretrained(f'{save_path_prefix}/tokenizer/checkpoint-{epoch+1}')
 
         model.eval()
         with torch.no_grad():
@@ -151,15 +154,19 @@ def train(model: T5ForConditionalGeneration, tokenizer: PreTrainedTokenizer, opt
                 target_encoded += encoded_targets.tolist()
         f1, exact_match = validation_set.evaluate(model_predictions_encoded, target_encoded)
         print(f"\t Validation F1 = {f1:.2f}, Exact Match (EM) = {exact_match:.2f}")
+        
+        with open(f"{save_path_prefix}/metrics.csv", 'a') as results_file:
+            results_file.write(f"validation,{len(model_predictions_encoded)},{f1:.2f},{exact_match:.2f},{epoch}\n")
+
         if f1 > f1_old :
-            model.save_pretrained(f'results/{model.name_or_path}/model/best-f1')
-            tokenizer.save_pretrained(f'results/{model.name_or_path}/tokenizer/best-f1')
+            model.save_pretrained(f'{save_path_prefix}/model/best-f1')
+            tokenizer.save_pretrained(f'{save_path_prefix}/tokenizer/best-f1')
             f1_old = f1
 
     model.save_pretrained(
-        f'results/{model.name_or_path}/model/checkpoint-{epoch+1}')
+        f'{save_path_prefix}/model/checkpoint-{epoch+1}')
     tokenizer.save_pretrained(
-        f'results/{model.name_or_path}/tokenizer/checkpoint-{epoch+1}')
+        f'{save_path_prefix}/tokenizer/checkpoint-{epoch+1}')
 
 
 if __name__ == '__main__':
@@ -170,9 +177,10 @@ if __name__ == '__main__':
 
     # Set seed
     set_seed(args.seed)
+    save_path_prefix = f"results/{args.t5_model}"
 
-    model = T5ForConditionalGeneration.from_pretrained(args.t5_model)
-    tokenizer = T5Tokenizer.from_pretrained(args.t5_model)
+    model = T5ForConditionalGeneration.from_pretrained(f"{save_path_prefix}/model/checkpoint-{args.resume_from_epoch}" if args.resume_from_epoch else args.t5_model)
+    tokenizer = T5Tokenizer.from_pretrained(f"{save_path_prefix}/tokenizer/checkpoint-{args.resume_from_epoch}" if args.resume_from_epoch else args.t5_model)
     # creating the optimizer
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
 
@@ -193,6 +201,8 @@ if __name__ == '__main__':
           validation_set=validation_set,
           num_train_epochs=args.epochs, 
           device=args.device, 
-          batch_size=args.batch_size)
+          batch_size=args.batch_size,
+          starting_epoch=args.resume_from_epoch if args.resume_from_epoch else 0,
+          save_path_prefix=save_path_prefix)
 
-    getTestAccuracy(model, tokenizer, test_set, batch_size=args.batch_size, workers=args.workers)
+    getTestAccuracy(model, tokenizer, test_set, batch_size=args.batch_size, workers=args.workers, device=args.device, results_file_path=f"{save_path_prefix}/metrics.csv")
