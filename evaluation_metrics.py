@@ -52,7 +52,47 @@ class EvaluationMetrics():
         genai.configure(api_key = api_key)
 
         model = genai.GenerativeModel('gemini-pro')
-        response = model.generate_content(f"Predicted Answer: {self.pred} \n Correct Answer: {self.actual}. \n On a scale of 1-5 rate how similar the predicted answer and correct answer are.")
+        prompt = """0 - Not at all similar\n
+        Criteria: The predicted answer and the correct answer have no common elements or relevance to each other. The prediction is entirely incorrect and does not address any aspect of the correct answer.\n
+        Example:\n
+        Predicted Answer: "Apple"\n
+        Correct Answer: "Bicycle"\n
+        \n
+        1 - Slightly similar\n
+        Criteria: The predicted answer and the correct answer have minimal commonality. The prediction shows a very faint hint of understanding but misses the main point or context of the correct answer.\n
+        Example:\n
+        Predicted Answer: "Car"\n
+        Correct Answer: "Bicycle"\n
+        (Both are modes of transportation, but different types.)\n
+        \n
+        2 - Somewhat similar\n
+        Criteria: The predicted answer and the correct answer share some elements or concepts but differ significantly in details or context. The prediction partially addresses the correct answer but lacks accuracy.\n
+        Example:\n
+        Predicted Answer: "Motorcycle"\n
+        Correct Answer: "Bicycle"\n
+        (Both are two-wheeled vehicles, but one is motorized and the other is not.)\n
+        \n
+        3 - Moderately similar\n
+        Criteria: The predicted answer and the correct answer are fairly aligned. The prediction captures the main idea but contains some inaccuracies or missing details. The overall context is mostly understood.\n
+        Example:\n
+        Predicted Answer: "Mountain Bike"\n
+        Correct Answer: "Bicycle"\n
+        (A mountain bike is a type of bicycle, indicating a moderate level of similarity.)\n
+        \n
+        4 - Very similar\n
+        Criteria: The predicted answer and the correct answer are closely matched. The prediction is nearly accurate with only minor discrepancies in details. The main idea and most specifics are correctly captured.\n
+        Example:\n
+        Predicted Answer: "Road Bicycle"\n
+        Correct Answer: "Bicycle"\n
+        (A road bicycle is a specific type of bicycle, showing a high degree of similarity.)\n
+        \n
+        5 - Exactly similar\n
+        Criteria: The predicted answer and the correct answer are identical or effectively indistinguishable. The prediction is completely accurate and matches the correct answer in all aspects.\n
+        Example:\n
+        Predicted Answer: "Bicycle"\n
+        Correct Answer: "Bicycle"\n
+        On a scale of 0-5, evaluate the degree of similarity between the predicted answer and the correct answer."""
+        response = model.generate_content(f"Predicted Answer: {self.pred} \n Correct Answer: {self.actual}. \n {prompt}")
 
         return response.text
 
