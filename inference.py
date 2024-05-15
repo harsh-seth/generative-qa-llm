@@ -5,6 +5,8 @@ from tqdm import tqdm
 from MyDataset2 import Dataset
 
 from RACE_Dataset import RaceDataset
+from evaluation_metrics import EvaluationMetrics
+
 def generateInference(model, tokenizer, input_str):
     model.eval()
     with torch.no_grad():
@@ -57,6 +59,8 @@ def getTestAccuracy(model, tokenizer, test_set, batch_size=4, workers=0, max_inp
     with open(results_file_path, 'a') as results_file:
         results_file.write(f"test,{len(model_predictions_encoded)},{f1:.2f},{exact_match:.2f}\n")
 
+    
+
 
 
 if __name__ == '__main__':
@@ -88,3 +92,11 @@ if __name__ == '__main__':
 
     print("Getting test split accuracy")
     getTestAccuracy(model, tokenizer, test_set)
+
+    eval_metric = EvaluationMetrics(output_str, correct_answer)
+    print("Rouge score: ", eval_metric.get_rouge_score())
+    print("Bluert score: ", eval_metric.get_bleurt_score())
+    print("BERT score: ")
+    eval_metric.get_bert_score()
+    print('\nLLM Evaluation: ', eval_metric.LLM_evaluation())
+    
