@@ -116,7 +116,7 @@ def train(model: T5ForConditionalGeneration, tokenizer: PreTrainedTokenizer, opt
         print(f"epoch={epoch + 1}/{num_train_epochs}")
         print(f"\t Train loss = {epoch_train_loss/len(train_set):.4f}")
 
-        if epoch+1 % 2 == 0:
+        if (epoch+1) % 2 == 0:
             model.save_pretrained(f'{save_path_prefix}/model/checkpoint-{epoch+1}')
             tokenizer.save_pretrained(f'{save_path_prefix}/tokenizer/checkpoint-{epoch+1}')
 
