@@ -16,11 +16,11 @@ class EvaluationMetrics():
         scores = rouge.get_scores(self.pred, self. actual)
         return scores
 
-    def get_bleurt_score(self):
-        metric = load("bleurt")
-        # metric = datasets.load_metric("bleurt")
-        results = metric.compute(predictions = [self.pred], references = [self.actual])
-        return results["scores"][0]
+    # def get_bleurt_score(self):
+    #     metric = load("bleurt")
+    #     # metric = datasets.load_metric("bleurt")
+    #     results = metric.compute(predictions = [self.pred], references = [self.actual])
+    #     return results["scores"][0]
 
 
     def get_bert_score(self):

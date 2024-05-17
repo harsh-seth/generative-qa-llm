@@ -1,9 +1,11 @@
-from transformers import T5Tokenizer, T5ForConditionalGeneration
 import torch
-from data.Dataset import construct_prompt
 
-from data.RACE_Dataset import RaceDataset
+from peft import get_peft_model, PeftConfig
+from transformers import AutoModelForSeq2SeqLM, T5Tokenizer, T5ForConditionalGeneration
 from utils.evaluation_metrics import EvaluationMetrics
+
+from data.Dataset import construct_prompt
+from data.RACE_Dataset import RaceDataset
 
 def generateInference(model, tokenizer, input_str):
     model.eval()
@@ -19,9 +21,17 @@ def generateInference(model, tokenizer, input_str):
 if __name__ == '__main__':
     print("Loading model..")
     device = 'cuda'
+    base_model_name = "t5-base"
     checkpoint_number = 6
-    tokenizer = T5Tokenizer.from_pretrained(f"results/t5-base/tokenizer/checkpoint-{checkpoint_number}")
-    model = T5ForConditionalGeneration.from_pretrained(f"results/t5-base/model/checkpoint-{checkpoint_number}")
+    tokenizer = T5Tokenizer.from_pretrained(f"results/{base_model_name}/tokenizer/checkpoint-{checkpoint_number}")
+    model = T5ForConditionalGeneration.from_pretrained(f"results/{base_model_name}/model/checkpoint-{checkpoint_number}")
+
+    # # # for PEFT models
+    # model = AutoModelForSeq2SeqLM.from_pretrained(base_model_name)
+    # peft_config = PeftConfig.from_pretrained(f"results/{base_model_name}/checkpoint-{checkpoint_number}/model")
+    # model = get_peft_model(model, peft_config)
+    # tokenizer = T5Tokenizer.from_pretrained(f"results/{base_model_name}/checkpoint-{checkpoint_number}/tokenizer")
+
     print("Model loaded.")
     model.to(device)
     model.eval()
@@ -45,6 +55,6 @@ if __name__ == '__main__':
 
         eval_metric = EvaluationMetrics(output_str, correct_answer)
         print("Rouge score: ", eval_metric.get_rouge_score())
-        print("Bluert score: ", eval_metric.get_bleurt_score())
+        # print("Bluert score: ", eval_metric.get_bleurt_score())
         # print('LLM Evaluation: ', eval_metric.LLM_evaluation())
         print("\n-----\n")
