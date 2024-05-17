@@ -1,19 +1,20 @@
-from __future__ import print_function
-from tqdm import tqdm
+import argparse
+import os
 import torch
 
-from transformers import PreTrainedTokenizer, T5ForConditionalGeneration, T5Tokenizer, AdamW, set_seed
 from torch.utils.data import DataLoader
-import argparse
+from tqdm import tqdm
+from transformers import T5ForConditionalGeneration, T5Tokenizer, set_seed
 
 from data.Dataset import Dataset
 from data.RACE_Dataset import RaceDataset
-from inference import getTestAccuracy
 
 def parse_command_line_arguments():
-
     parser = argparse.ArgumentParser(
-        description='CLI for training T5 T2T model')
+        description='CLI for fine-tuning a T5 Text-to-Text model')
+
+    parser.add_argument('--evaluate', '-e', action="store_true",
+                        help="Run only testset evaluation?")
 
     parser.add_argument('--t5_model', type=str, default="t5-base",
                         help="What type of T5 model do you want use?")
@@ -21,23 +22,23 @@ def parse_command_line_arguments():
     parser.add_argument('--batch_size', type=int, default=16,
                         help='mini-batch size (default: 16)')
 
-    parser.add_argument('--epochs', type=int, default=2,
-                        help='number of training epochs (default: 40)')
+    parser.add_argument('--epochs', type=int, default=4,
+                        help='number of training epochs (default: 4)')
 
     parser.add_argument('--lr', type=float, default=1e-4,
                         help='learning rate (Adam) (default: 1e-4)')
 
     parser.add_argument('--workers', type=int, default=0,
-                        help='number of working units used to load the data (default: 10)')
+                        help='number of working units used to load the data (default: 0)')
 
     parser.add_argument('--device', default='cuda', type=str,
-                        help='device to be used for computations (in {cpu, cuda:0, cuda:1, ...}, default: cpu)')
+                        help='device to be used for computations (in {cpu, cuda:0, cuda:1, ...}, default: cuda)')
 
     parser.add_argument('--max_input_length', type=int, default=512,
-                        help='Maximum lenght of input text, (default: 512, maximum admitted: 512)')
+                        help='Maximum length of input text, (default: 512, maximum admitted: 512)')
 
-    parser.add_argument('--seed', type=int, default=7,
-                        help='Seed for random initialization (default: 7)')
+    parser.add_argument('--seed', type=int, default=42,
+                        help='Seed for random initialization (default: 42)')
     
     parser.add_argument('--max_records_cut', type=float, default=1.0,
                     help='Fraction of records to train and validate on (range: 0.0 - 1.0, default: 1.0 - i.e. all records)')
@@ -50,126 +51,109 @@ def parse_command_line_arguments():
     return parsed_arguments
 
 
-def train(model: T5ForConditionalGeneration, tokenizer: PreTrainedTokenizer, optimizer: AdamW, train_set: Dataset, validation_set: Dataset, num_train_epochs: int, device: str, batch_size: int, max_input_length: int = 512, starting_epoch = 0, save_path_prefix = "results/t5-pretrained"):
-    """_summary_
-
-    Args:
-        model (T5ForConditionalGeneration): _description_
-        tokenizer (PreTrainedTokenizer): _description_
-        optimizer (AdamW): _description_
-        train_set (Dataset): _description_
-        validation_set (Dataset): _description_
-        num_train_epochs (int): _description_
-        device (str): _description_
-        batch_size (int): _description_
-    """
-
-    my_trainset_dataloader = DataLoader(train_set, batch_size=args.batch_size,
-                                        num_workers=args.workers, collate_fn=lambda data: train_set.pack_minibatch(data))
-    my_validation_dataloader = DataLoader(validation_set, batch_size=args.batch_size,
-                                          num_workers=args.workers, collate_fn=lambda data: validation_set.pack_minibatch(data))
-
-    # set training mode on the model
+def trainOnce(model, tokenizer, optimizer, dataloader, max_input_length, device):
     model.train()
+    train_loss = 0.
+    for prompts, targets in tqdm(dataloader):
+        optimizer.zero_grad()
+        encoded_inputs = tokenizer(
+            prompts,
+            padding="longest",
+            max_length=max_input_length,
+            truncation=True,
+            return_tensors="pt",
+        )
+        encoded_targets = tokenizer(
+            targets,
+            padding="longest",
+            max_length=max_input_length,
+            truncation=True,
+            return_tensors="pt",
+        )
 
-    # model to device
-    model.to(device)
+        input_ids, attention_mask = encoded_inputs.input_ids, encoded_inputs.attention_mask
+        encoded_targets = encoded_targets.input_ids
 
-    f1_old: int = 0
-    for epoch in range(starting_epoch, num_train_epochs):
-        model.train()
-        epoch_train_loss = 0.
-        for contexts,questions,answers in tqdm(my_trainset_dataloader):
-            optimizer.zero_grad()
+        # replace padding target token id's of the labels by -100, crossEntropy skip target label == -100
+        encoded_targets[encoded_targets == tokenizer.pad_token_id] = -100
 
-            inputs = list(map(lambda tuple: f"question:{tuple[0]}  context:{tuple[1]}", zip(questions,contexts)))
+        input_ids = input_ids.to(device)
+        encoded_targets = encoded_targets.to(device)
+        attention_mask = attention_mask.to(device)
+
+        outputs = model(input_ids=input_ids, attention_mask=attention_mask, labels=encoded_targets)
+        loss = outputs.loss
+        loss.backward()
+        optimizer.step()
+        train_loss += loss.item() * len(prompts)
+    return train_loss
+
+def evaluateOnce(model, tokenizer, dataloader, max_input_length, device):
+    model.eval()
+    model_predictions_encoded = []
+    target_encoded = []
+    with torch.no_grad():
+        for prompts, targets in tqdm(dataloader):
             encoded_inputs = tokenizer(
-                                    inputs,
-                                    padding="longest",
-                                    max_length=max_input_length,
-                                    truncation=True,
-                                    return_tensors="pt",
-                                )
+                prompts,
+                padding="longest",
+                max_length=max_input_length,
+                truncation=True,
+                return_tensors="pt",
+            )
             encoded_targets = tokenizer(
-                                    answers,
-                                    padding="longest",
-                                    max_length=max_input_length,
-                                    truncation=True,
-                                    return_tensors="pt",
-                                )
-
-            input_ids, attention_mask = encoded_inputs.input_ids, encoded_inputs.attention_mask
+                targets,
+                padding="longest",
+                max_length=max_input_length,
+                truncation=True,
+                return_tensors="pt",
+            )
+            encoded_inputs, attention_mask = encoded_inputs.input_ids, encoded_inputs.attention_mask
             encoded_targets = encoded_targets.input_ids
 
-            # replace padding target token id's of the labels by -100, crossEntropy skip target label == -100
-            encoded_targets[encoded_targets == tokenizer.pad_token_id] = -100
-
-            input_ids = input_ids.to(device)
+            encoded_inputs = encoded_inputs.to(device)
             encoded_targets = encoded_targets.to(device)
             attention_mask = attention_mask.to(device)
+            model_predictions = model.generate(
+                input_ids=encoded_inputs, attention_mask=attention_mask)
 
-            outputs = model(input_ids=input_ids, attention_mask=attention_mask, labels=encoded_targets)
-            loss = outputs.loss
-            loss.backward()
-            optimizer.step()
-            epoch_train_loss += loss.item() * batch_size
-        print(f"epoch={epoch + 1}/{num_train_epochs}")
-        print(f"\t Train loss = {epoch_train_loss/len(train_set):.4f}")
+            model_predictions_encoded += model_predictions.tolist()
+            target_encoded += encoded_targets.tolist()
+    f1_score, exact_match_score = dataloader.dataset.evaluate(model_predictions_encoded, target_encoded)
+    return f1_score, exact_match_score
 
-        if (epoch+1) % 2 == 0:
-            model.save_pretrained(f'{save_path_prefix}/model/checkpoint-{epoch+1}')
-            tokenizer.save_pretrained(f'{save_path_prefix}/tokenizer/checkpoint-{epoch+1}')
+def train(model, tokenizer, optimizer, train_dataloader, validation_dataloader, num_train_epochs, device, max_input_length = 512, starting_epoch = 0, save_path_prefix = "results/t5-pretrained"):
+    model.to(device)
+
+    best_f1_score: int = 0
+    for epoch in range(starting_epoch, num_train_epochs):
+        print(f"\n[Epoch {epoch + 1} / {num_train_epochs}]")
+
+        epoch_train_loss = trainOnce(model, tokenizer, optimizer, train_dataloader, max_input_length, device)
+        epoch_train_loss /= len(train_dataloader.dataset)
+        print(f"\t Train loss = {epoch_train_loss:.4f}")
+
+        model.save_pretrained(f'{save_path_prefix}/checkpoint-{epoch+1}/model')
+        tokenizer.save_pretrained(f'{save_path_prefix}/checkpoint-{epoch+1}/tokenizer')
 
         with open(f"{save_path_prefix}/metrics.csv", 'a') as results_file:
-            results_file.write(f"train,{len(train_set)},,,{epoch},{epoch_train_loss/len(train_set):.4f}\n")
+            results_file.write(f"train,{len(train_dataloader.dataset)},,,{epoch+1},{epoch_train_loss:.4f}\n")
 
-        model.eval()
-        with torch.no_grad():
-            model_predictions_encoded = []
-            target_encoded = []
-            for contexts, questions, answers in tqdm(my_validation_dataloader):
-                inputs = list(map(lambda tuple: f"question: {tuple[0]}  context:{tuple[1]}", zip(
-                    questions, contexts)))
-                encoded_inputs = tokenizer(
-                    inputs,
-                    padding="longest",
-                    max_length=max_input_length,
-                    truncation=True,
-                    return_tensors="pt",
-                )
-                encoded_targets = tokenizer(
-                    answers,
-                    padding="longest",
-                    max_length=max_input_length,
-                    truncation=True,
-                    return_tensors="pt",
-                )
-                encoded_inputs, attention_mask = encoded_inputs.input_ids, encoded_inputs.attention_mask
-                encoded_targets = encoded_targets.input_ids
-
-                encoded_inputs = encoded_inputs.to(device)
-                encoded_targets = encoded_targets.to(device)
-                attention_mask = attention_mask.to(device)
-                model_predictions = model.generate(
-                    input_ids=encoded_inputs, attention_mask=attention_mask)
-
-                model_predictions_encoded += model_predictions.tolist()
-                target_encoded += encoded_targets.tolist()
-        f1, exact_match = validation_set.evaluate(model_predictions_encoded, target_encoded)
-        print(f"\t Validation F1 = {f1:.2f}, Exact Match (EM) = {exact_match:.2f}")
+        f1_score, exact_match_score = evaluateOnce(model, tokenizer, validation_dataloader, max_input_length, device)
+        print(f"\t Validation F1 = {f1_score:.2f}, Exact Match (EM) = {exact_match_score:.2f}")
         
         with open(f"{save_path_prefix}/metrics.csv", 'a') as results_file:
-            results_file.write(f"validation,{len(model_predictions_encoded)},{f1:.2f},{exact_match:.2f},{epoch}\n")
+            results_file.write(f"validation,{len(validation_dataloader.dataset)},{f1_score:.2f},{exact_match_score:.2f},{epoch+1}\n")
 
-        if f1 > f1_old :
-            model.save_pretrained(f'{save_path_prefix}/model/best-f1')
-            tokenizer.save_pretrained(f'{save_path_prefix}/tokenizer/best-f1')
-            f1_old = f1
+        if f1_score > best_f1_score :
+            model.save_pretrained(f'{save_path_prefix}/best-f1/model')
+            tokenizer.save_pretrained(f'{save_path_prefix}/best-f1/tokenizer')
+            best_f1_score = f1_score
 
     model.save_pretrained(
-        f'{save_path_prefix}/model/checkpoint-{epoch+1}')
+        f'{save_path_prefix}/checkpoint-{epoch+1}/model')
     tokenizer.save_pretrained(
-        f'{save_path_prefix}/tokenizer/checkpoint-{epoch+1}')
+        f'{save_path_prefix}/checkpoint-{epoch+1}/tokenizer')
 
 
 if __name__ == '__main__':
@@ -180,32 +164,46 @@ if __name__ == '__main__':
 
     # Set seed
     set_seed(args.seed)
-    save_path_prefix = f"results/{args.t5_model}"
 
-    model = T5ForConditionalGeneration.from_pretrained(f"{save_path_prefix}/model/checkpoint-{args.resume_from_epoch}" if args.resume_from_epoch else args.t5_model)
-    tokenizer = T5Tokenizer.from_pretrained(f"{save_path_prefix}/tokenizer/checkpoint-{args.resume_from_epoch}" if args.resume_from_epoch else args.t5_model)
-    # creating the optimizer
+    save_path_prefix = f"results/{args.t5_model}"
+    if not os.path.exists(save_path_prefix):
+        os.makedirs(save_path_prefix)
+
+    model = T5ForConditionalGeneration.from_pretrained(f"{save_path_prefix}/checkpoint-{args.resume_from_epoch}/model" if args.resume_from_epoch else args.t5_model)
+    tokenizer = T5Tokenizer.from_pretrained(f"{save_path_prefix}/checkpoint-{args.resume_from_epoch}/tokenizer" if args.resume_from_epoch else args.t5_model)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
 
     raceDataset = RaceDataset()
-    train_set = raceDataset.get_dataset('train', num_records=int(87853*args.max_records_cut))
+    train_set = raceDataset.get_dataset('train', num_records=100)
+    # train_set = raceDataset.get_dataset('train', num_records=int(87853*args.max_records_cut))
     train_set = Dataset(train_set, tokenizer)
+    train_dataloader = DataLoader(train_set, batch_size=args.batch_size, num_workers=args.workers, collate_fn=lambda data: train_set.pack_minibatch(data))
     
-    validation_set = raceDataset.get_dataset('val', num_records=int(4886*args.max_records_cut))
+    validation_set = raceDataset.get_dataset('val', num_records=100)
+    # validation_set = raceDataset.get_dataset('val', num_records=int(4886*args.max_records_cut))
     validation_set = Dataset(validation_set, tokenizer)
+    validation_dataloader = DataLoader(validation_set, batch_size=args.batch_size, num_workers=args.workers, collate_fn=lambda data: validation_set.pack_minibatch(data))
 
-    test_set = raceDataset.get_dataset('test')
+    test_set = raceDataset.get_dataset('test', num_records=100)
+    # test_set = raceDataset.get_dataset('test')
     test_set = Dataset(test_set, tokenizer)
+    test_dataloader = DataLoader(test_set, batch_size=args.batch_size, num_workers=args.workers, collate_fn=lambda data: test_set.pack_minibatch(data))
 
-    train(model=model,
-          tokenizer=tokenizer,
-          optimizer=optimizer,
-          train_set=train_set,
-          validation_set=validation_set,
-          num_train_epochs=args.epochs, 
-          device=args.device, 
-          batch_size=args.batch_size,
-          starting_epoch=args.resume_from_epoch if args.resume_from_epoch else 0,
-          save_path_prefix=save_path_prefix)
+    if not args.evaluate:
+        train(
+            model=model,
+            tokenizer=tokenizer,
+            optimizer=optimizer,
+            train_dataloader=train_dataloader,
+            validation_dataloader=validation_dataloader,
+            num_train_epochs=args.epochs, 
+            device=args.device, 
+            starting_epoch=args.resume_from_epoch if args.resume_from_epoch else 0,
+            max_input_length=args.max_input_length,
+            save_path_prefix=save_path_prefix,
+        )
 
-    getTestAccuracy(model, tokenizer, test_set, batch_size=args.batch_size, workers=args.workers, device=args.device, results_file_path=f"{save_path_prefix}/metrics.csv")
+    f1_score, exact_match_score = evaluateOnce(model, tokenizer, test_dataloader, args.max_input_length, args.device)
+    print(f"\t Evaluation F1 = {f1_score:.2f}, Exact Match (EM) = {exact_match_score:.2f}")
+    with open(f"{save_path_prefix}/metrics.csv", 'a') as results_file:
+        results_file.write(f"test,{len(test_dataloader.dataset)},{f1_score:.2f},{exact_match_score:.2f}\n")
