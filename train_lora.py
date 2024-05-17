@@ -1,52 +1,53 @@
+import argparse
 import os
-from tqdm import tqdm
 import torch
 
-from transformers import T5ForConditionalGeneration, T5Tokenizer, set_seed
+from peft import get_peft_model, PeftConfig, prepare_model_for_kbit_training, LoraConfig, TaskType
 from torch.utils.data import DataLoader
-import argparse
+from tqdm import tqdm
+from transformers import AutoModelForSeq2SeqLM, BitsAndBytesConfig, T5Tokenizer, set_seed
 
 from data.Dataset import Dataset
 from data.RACE_Dataset import RaceDataset
 
 def parse_command_line_arguments():
-
     parser = argparse.ArgumentParser(
-        description='CLI for training T5 T2T model')
+        description='CLI for fine-tuning a T5 Text-to-Text model')
 
-    parser.add_argument('--t5_model', type=str, default="t5-base",
-                        help="What type of T5 model do you want use?")
+    parser.add_argument('--t5_model', type=str, default="google/flan-t5-base",
+                        help="What type of T5 model do you want use? (default: 'google/flan-t5-base')")
 
     parser.add_argument('--batch_size', type=int, default=16,
                         help='mini-batch size (default: 16)')
 
     parser.add_argument('--epochs', type=int, default=2,
-                        help='number of training epochs (default: 40)')
+                        help='number of training epochs (default: 2)')
 
     parser.add_argument('--lr', type=float, default=1e-4,
                         help='learning rate (Adam) (default: 1e-4)')
 
     parser.add_argument('--workers', type=int, default=0,
-                        help='number of working units used to load the data (default: 10)')
+                        help='number of working units used to load the data (default: 0)')
 
     parser.add_argument('--device', default='cuda', type=str,
-                        help='device to be used for computations (in {cpu, cuda:0, cuda:1, ...}, default: cpu)')
+                        help='device to be used for computations (in {cpu, cuda:0, cuda:1, ...}, default: cuda)')
 
     parser.add_argument('--max_input_length', type=int, default=512,
-                        help='Maximum lenght of input text, (default: 512, maximum admitted: 512)')
+                        help='Maximum length of input text, (default: 512, maximum admitted: 512)')
 
-    parser.add_argument('--seed', type=int, default=7,
-                        help='Seed for random initialization (default: 7)')
-
+    parser.add_argument('--seed', type=int, default=42,
+                        help='Seed for random initialization (default: 42)')
+    
     parser.add_argument('--max_records_cut', type=float, default=1.0,
                     help='Fraction of records to train and validate on (range: 0.0 - 1.0, default: 1.0 - i.e. all records)')
-
-    parser.add_argument('--resume_from_epoch', type=int, default=None,
-                help='Resume from checkpoint @ specified epoch number')
-
+    
+    parser.add_argument('--evaluate_at_epoch', '-e', type=int, default=None,
+                help='Evaluate model at checkpoint @ specified epoch number')
+    
     parsed_arguments = parser.parse_args()
 
     return parsed_arguments
+
 
 def trainOnce(model, tokenizer, optimizer, dataloader, max_input_length, device):
     model.train()
@@ -128,8 +129,8 @@ def train(model, tokenizer, optimizer, train_dataloader, validation_dataloader, 
         epoch_train_loss /= len(train_dataloader.dataset)
         print(f"\t Train loss = {epoch_train_loss:.4f}")
 
-        model.save_pretrained(f'{save_path_prefix}/model/checkpoint-{epoch+1}')
-        tokenizer.save_pretrained(f'{save_path_prefix}/tokenizer/checkpoint-{epoch+1}')
+        model.save_pretrained(f'{save_path_prefix}/checkpoint-{epoch+1}/model')
+        tokenizer.save_pretrained(f'{save_path_prefix}/checkpoint-{epoch+1}/tokenizer')
 
         with open(f"{save_path_prefix}/metrics.csv", 'a') as results_file:
             results_file.write(f"train,{len(train_dataloader.dataset)},,,{epoch+1},{epoch_train_loss:.4f}\n")
@@ -141,32 +142,49 @@ def train(model, tokenizer, optimizer, train_dataloader, validation_dataloader, 
             results_file.write(f"validation,{len(validation_dataloader.dataset)},{f1_score:.2f},{exact_match_score:.2f},{epoch+1}\n")
 
         if f1_score > best_f1_score :
-            model.save_pretrained(f'{save_path_prefix}/model/best-f1')
-            tokenizer.save_pretrained(f'{save_path_prefix}/tokenizer/best-f1')
+            model.save_pretrained(f'{save_path_prefix}/best-f1/model')
+            tokenizer.save_pretrained(f'{save_path_prefix}/best-f1/tokenizer')
             best_f1_score = f1_score
 
     model.save_pretrained(
-        f'{save_path_prefix}/model/checkpoint-{epoch+1}')
+        f'{save_path_prefix}/checkpoint-{epoch+1}/model')
     tokenizer.save_pretrained(
-        f'{save_path_prefix}/tokenizer/checkpoint-{epoch+1}')
+        f'{save_path_prefix}/checkpoint-{epoch+1}/tokenizer')
 
 
 if __name__ == '__main__':
     args = parse_command_line_arguments()
+
     for k, v in args.__dict__.items():
         print(k + '=' + str(v))
 
     # Set seed
     set_seed(args.seed)
+
     save_path_prefix = f"results/{args.t5_model}"
     if not os.path.exists(save_path_prefix):
         os.makedirs(save_path_prefix)
 
-    model = T5ForConditionalGeneration.from_pretrained(f"{save_path_prefix}/model/checkpoint-{args.resume_from_epoch}" if args.resume_from_epoch else args.t5_model)
-    tokenizer = T5Tokenizer.from_pretrained(f"{save_path_prefix}/tokenizer/checkpoint-{args.resume_from_epoch}" if args.resume_from_epoch else args.t5_model)
-    model.to(args.device)
-    # creating the optimizer
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
+    bnb_config = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_compute_dtype=torch.bfloat16, bnb_4bit_use_double_quant=True, bnb_4bit_quant_type="nf4")
+    model = AutoModelForSeq2SeqLM.from_pretrained(args.t5_model, quantization_config=bnb_config, device_map="auto")
+    peft_config = None
+
+    # Can either train the model, or evaluate it
+    if args.evaluate_at_epoch:
+        peft_config = PeftConfig.from_pretrained(f"{save_path_prefix}/checkpoint-{args.evaluate_at_epoch}/model")
+    else:
+        model = prepare_model_for_kbit_training(model)
+        peft_config = LoraConfig(
+            task_type=TaskType.SEQ_2_SEQ_LM,
+            inference_mode=False,
+            r=8,
+            lora_alpha=32,
+            lora_dropout=0.1
+        )
+
+    model = get_peft_model(model, peft_config)
+    model.print_trainable_parameters()
+    tokenizer = T5Tokenizer.from_pretrained(f"{save_path_prefix}/checkpoint-{args.evaluate_at_epoch}/tokenizer" if args.evaluate_at_epoch else args.t5_model)
 
     raceDataset = RaceDataset()
     train_set = raceDataset.get_dataset('train', num_records=int(80292*args.max_records_cut))
@@ -181,20 +199,24 @@ if __name__ == '__main__':
     test_set = Dataset(test_set, tokenizer)
     test_dataloader = DataLoader(test_set, batch_size=args.batch_size, num_workers=args.workers, collate_fn=lambda data: test_set.pack_minibatch(data))
 
-    train(
-        model=model,
-        tokenizer=tokenizer,
-        optimizer=optimizer,
-        train_dataloader=train_dataloader,
-        validation_dataloader=validation_dataloader,
-        num_train_epochs=args.epochs, 
-        device=args.device, 
-        starting_epoch=args.resume_from_epoch if args.resume_from_epoch else 0,
-        save_path_prefix=save_path_prefix
-    )
+    if args.evaluate_at_epoch:
+        print("\n[Evaluation]")
+        f1_score, exact_match_score = evaluateOnce(model, tokenizer, test_dataloader, args.max_input_length, args.device)
+        print(f"\t Evaluation F1 = {f1_score:.2f}, Exact Match (EM) = {exact_match_score:.2f}")
+        with open(f"{save_path_prefix}/metrics.csv", 'a') as results_file:
+            results_file.write(f"test,{len(test_dataloader.dataset)},{f1_score:.2f},{exact_match_score:.2f}\n")
 
-    print("\n[Evaluation]")
-    f1_score, exact_match_score = evaluateOnce(model, tokenizer, test_dataloader, args.max_input_length, args.device)
-    print(f"\t Evaluation F1 = {f1_score:.2f}, Exact Match (EM) = {exact_match_score:.2f}")
-    with open(f"{save_path_prefix}/metrics.csv", 'a') as results_file:
-        results_file.write(f"test,{len(test_dataloader.dataset)},{f1_score:.2f},{exact_match_score:.2f}\n")
+    else:
+        optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
+        train(
+            model=model,
+            tokenizer=tokenizer,
+            optimizer=optimizer,
+            train_dataloader=train_dataloader,
+            validation_dataloader=validation_dataloader,
+            num_train_epochs=args.epochs, 
+            device=args.device, 
+            starting_epoch=0,
+            max_input_length=args.max_input_length,
+            save_path_prefix=save_path_prefix,
+        )

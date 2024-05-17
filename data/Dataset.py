@@ -1,10 +1,12 @@
-from collections import Counter
-from typing import List, Tuple
 import datasets
-import transformers
 import torch
-from tqdm import tqdm
 
+from collections import Counter
+from tqdm import tqdm
+from typing import List, Tuple
+
+def construct_prompt(question, context):
+    return f"Answer the following question with provided context\n##Question: {question}\n##Context: {context}\n##Answer:"
 
 class Dataset(torch.utils.data.Dataset):
     def __init__(self, hf_dataset: datasets.arrow_dataset.Dataset, tokenizer):
@@ -51,7 +53,7 @@ class Dataset(torch.utils.data.Dataset):
         Returns:
             Tuple(str,str,str): (Context, Question, Answer)
         """
-        return self.contexts[index], self.questions[index], self.answers[index]
+        return construct_prompt(self.questions[index], self.contexts[index]), self.answers[index]
 
     def pack_minibatch(self, data: List[Tuple[str, str]]):
         """Pack mini-batch function

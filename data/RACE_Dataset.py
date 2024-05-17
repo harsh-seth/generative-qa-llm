@@ -37,7 +37,7 @@ class RaceDataset():
         questions=dict_mode['question']
 
         # removing questions which depend on the options
-        regex = r"^which of the following|are correct except|^the following are true according to the passage except/gi"
+        regex = r"^which of the following|are correct except|^the following are true according to the passage except"
         for idx, question in enumerate(questions):
             if re.match(regex, question.lower()):
                 options.pop(idx)

@@ -7,3 +7,6 @@ bert_score
 google.generativeai
 evaluate
 git+https://github.com/google-research/bleurt.git
+peft
+bitsandbytes
+accelerate
