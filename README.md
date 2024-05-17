@@ -33,24 +33,24 @@ Command line arguments: <br>
 10. "evaluate_at_epoch" - Resume from checkpoint @ specified epoch number
 
 
-Command to train the T5-base mode
+Command to train the T5-base mode <br>
 ```
 python train.py --epochs=6 --t5_model="t5-base" --batch_size=8
 ```
 <br>
-Command to train the flan-t5-base with qLoRA
+Command to train the flan-t5-base with qLoRA <br>
 ```
 python train_lora.py --epochs=4 --t5_model="google/flan-t5-base" --batch_size=16 -e=2
 ```
 <br>
-Command to train the instruction fine tuned
+Command to train the instruction fine tuned <br>
 ```
 python train_sft.py
 ```
 
 ### Inference/Testing - 
 
-Command to run the model on test set
+Command to run the model on test set <br>
 '''
 python inference.py
 '''
