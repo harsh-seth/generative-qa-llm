@@ -6,7 +6,8 @@ from transformers import TrainingArguments
 from unsloth import FastLanguageModel
 from tqdm import tqdm
 
-from data.Dataset import get_eval_scores
+from utils.data_utils import dataset_collator
+from utils.evaluation_metrics import get_eval_scores
 
 def evaluateOnce(model, tokenizer, dataloader):
     model.eval()
@@ -106,21 +107,7 @@ test_dataset = load_dataset("ehovy/race", "all", split="test")
 train_dataset = train_dataset.map(formatting_prompts_func, batched=True)
 validation_dataset = validation_dataset.map(formatting_prompts_func, batched=True)
 
-def collate_fn(examples):
-    prompts = []
-    responses = []
-    option_index = {'A':0, 'B':1, 'C':2, 'D':3, 'E':4}
-
-    for example in examples:
-        option = example["options"]
-        answer = example["answer"]
-        context = example["article"]
-        question = example["question"]
-        responses.append(option[option_index[answer]])
-        prompts.append(prompt_template.format(question, context, ""))
-
-    return prompts, responses
-test_dataloader = DataLoader(test_dataset, batch_size=8, collate_fn=collate_fn)
+test_dataloader = DataLoader(test_dataset, batch_size=8, collate_fn=dataset_collator)
 
 trainer = SFTTrainer(
     model=model,
