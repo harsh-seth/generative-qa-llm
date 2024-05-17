@@ -161,5 +161,6 @@ cython_debug/
 
 
 results/
+checkpoints/
 
 API_KEY.txt

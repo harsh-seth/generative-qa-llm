@@ -2,3 +2,8 @@ tqdm
 datasets
 transformers
 sentencepiece
+rouge
+bert_score
+google.generativeai
+evaluate
+git+https://github.com/google-research/bleurt.git
