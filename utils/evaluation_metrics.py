@@ -40,9 +40,7 @@ class EvaluationMetrics():
         p, r, f1 = score(candidates, references, lang='en', model_type='bert-base-uncased', num_layers=None, idf=False)
 
         # Step 3: Print or use the BERTScore values
-        print("Precision:", p.mean().item())
-        print("Recall:", r.mean().item())
-        print("F1 score:", f1.mean().item())
+        return p.mean().item(), r.mean().item(), f1.mean().item()
 
     def LLM_evaluation(self):
         file_path = 'API_KEY.txt'
@@ -64,6 +62,10 @@ class EvaluationMetrics():
         Predicted Answer: "Car"\n
         Correct Answer: "Bicycle"\n
         (Both are modes of transportation, but different types.)\n
+        Example:\n
+        Predicted Answer: "You will find bringing a backpack very helpful"\n
+        Correct Answer: "You may have the need to free up your hands while street shopping"\n
+        (The predicted answer relates to the main point in the correct answer without being specific about it.)\n
         \n
         2 - Somewhat similar\n
         Criteria: The predicted answer and the correct answer share some elements or concepts but differ significantly in details or context. The prediction partially addresses the correct answer but lacks accuracy.\n
@@ -71,6 +73,10 @@ class EvaluationMetrics():
         Predicted Answer: "Motorcycle"\n
         Correct Answer: "Bicycle"\n
         (Both are two-wheeled vehicles, but one is motorized and the other is not.)\n
+        Example:\n
+        Predicted Answer: "The importance of pies has changed over time"\n
+        Correct Answer: "People have paid more and more attention to the importance of pies"\n\n
+        (Both talk about the importance of dresses changing, but the correct answer was more specific about what changed.)\n
         \n
         3 - Moderately similar\n
         Criteria: The predicted answer and the correct answer are fairly aligned. The prediction captures the main idea but contains some inaccuracies or missing details. The overall context is mostly understood.\n
@@ -82,6 +88,10 @@ class EvaluationMetrics():
         4 - Very similar\n
         Criteria: The predicted answer and the correct answer are closely matched. The prediction is nearly accurate with only minor discrepancies in details. The main idea and most specifics are correctly captured.\n
         Example:\n
+        Predicted Answer: "She might be laughed at by the others"\n
+        Correct Answer: "She did not want to be laughed at"\n
+        (Both answers convey the same meaning.)\n
+        Example:\n
         Predicted Answer: "Road Bicycle"\n
         Correct Answer: "Bicycle"\n
         (A road bicycle is a specific type of bicycle, showing a high degree of similarity.)\n
@@ -91,7 +101,7 @@ class EvaluationMetrics():
         Example:\n
         Predicted Answer: "Bicycle"\n
         Correct Answer: "Bicycle"\n
-        On a scale of 0-5, evaluate the degree of similarity between the predicted answer and the correct answer."""
+        On a scale of 0-5, evaluate the degree of similarity between the predicted answer and the correct answer. Please give just a number for your score"""
         response = model.generate_content(f"Predicted Answer: {self.pred} \n Correct Answer: {self.actual}. \n {prompt}")
 
         return response.text
