@@ -4,8 +4,8 @@ from peft import get_peft_model, PeftConfig
 from transformers import AutoModelForSeq2SeqLM, T5Tokenizer, T5ForConditionalGeneration
 from utils.evaluation_metrics import EvaluationMetrics
 
-from data.Dataset import construct_prompt
 from data.RACE_Dataset import RaceDataset
+from utils.data_utils import construct_prompt
 
 def generateInference(model, tokenizer, input_str):
     model.eval()

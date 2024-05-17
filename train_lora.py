@@ -7,8 +7,9 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import AutoModelForSeq2SeqLM, BitsAndBytesConfig, T5Tokenizer, set_seed
 
-from data.Dataset import Dataset
 from data.RACE_Dataset import RaceDataset
+from utils.data_utils import dataset_collator
+from utils.evaluation_metrics import get_eval_scores
 
 def parse_command_line_arguments():
     parser = argparse.ArgumentParser(
@@ -43,6 +44,13 @@ def parse_command_line_arguments():
     
     parser.add_argument('--evaluate_at_epoch', '-e', type=int, default=None,
                 help='Evaluate model at checkpoint @ specified epoch number')
+    
+    parser.add_argument('--num_test_records', type=int, default=None,
+                help='How many records to create the test set from? (default: None = All records)')
+    
+    parser.add_argument('--save_test_generation', action="store_true",
+                help='Save generated text from test evaluation?')
+
     
     parsed_arguments = parser.parse_args()
 
@@ -117,8 +125,8 @@ def evaluateOnce(model, tokenizer, dataloader, max_input_length, device):
 
             model_predictions_encoded += model_predictions.tolist()
             target_encoded += encoded_targets.tolist()
-    f1_score, exact_match_score = dataloader.dataset.evaluate(model_predictions_encoded, target_encoded)
-    return f1_score, exact_match_score
+    f1_score, exact_match_score = get_eval_scores(tokenizer, model_predictions_encoded, target_encoded)
+    return f1_score, exact_match_score, model_predictions_encoded
 
 def train(model, tokenizer, optimizer, train_dataloader, validation_dataloader, num_train_epochs, device, max_input_length = 512, starting_epoch = 0, save_path_prefix = "results/t5-pretrained"):
     best_f1_score: int = 0
@@ -135,7 +143,7 @@ def train(model, tokenizer, optimizer, train_dataloader, validation_dataloader, 
         with open(f"{save_path_prefix}/metrics.csv", 'a') as results_file:
             results_file.write(f"train,{len(train_dataloader.dataset)},,,{epoch+1},{epoch_train_loss:.4f}\n")
 
-        f1_score, exact_match_score = evaluateOnce(model, tokenizer, validation_dataloader, max_input_length, device)
+        f1_score, exact_match_score, _ = evaluateOnce(model, tokenizer, validation_dataloader, max_input_length, device)
         print(f"\t Validation F1 = {f1_score:.2f}, Exact Match (EM) = {exact_match_score:.2f}")
         
         with open(f"{save_path_prefix}/metrics.csv", 'a') as results_file:
@@ -188,23 +196,25 @@ if __name__ == '__main__':
 
     raceDataset = RaceDataset()
     train_set = raceDataset.get_dataset('train', num_records=int(80292*args.max_records_cut))
-    train_set = Dataset(train_set, tokenizer)
-    train_dataloader = DataLoader(train_set, batch_size=args.batch_size, num_workers=args.workers, collate_fn=lambda data: train_set.pack_minibatch(data))
+    train_dataloader = DataLoader(train_set, batch_size=args.batch_size, num_workers=args.workers, collate_fn=lambda data: dataset_collator(data, preprocessed=True))
     
     validation_set = raceDataset.get_dataset('val', num_records=int(4495*args.max_records_cut))
-    validation_set = Dataset(validation_set, tokenizer)
-    validation_dataloader = DataLoader(validation_set, batch_size=args.batch_size, num_workers=args.workers, collate_fn=lambda data: validation_set.pack_minibatch(data))
+    validation_dataloader = DataLoader(validation_set, batch_size=args.batch_size, num_workers=args.workers, collate_fn=lambda data: dataset_collator(data, preprocessed=True))
 
-    test_set = raceDataset.get_dataset('test')
-    test_set = Dataset(test_set, tokenizer)
-    test_dataloader = DataLoader(test_set, batch_size=args.batch_size, num_workers=args.workers, collate_fn=lambda data: test_set.pack_minibatch(data))
+    test_set = raceDataset.get_dataset('test', num_records=args.num_test_records)
+    test_dataloader = DataLoader(test_set, batch_size=args.batch_size, num_workers=args.workers, collate_fn=lambda data: dataset_collator(data, preprocessed=True))
 
     if args.evaluate_at_epoch:
         print("\n[Evaluation]")
-        f1_score, exact_match_score = evaluateOnce(model, tokenizer, test_dataloader, args.max_input_length, args.device)
+        f1_score, exact_match_score, model_pred_tokens = evaluateOnce(model, tokenizer, test_dataloader, args.max_input_length, args.device)
         print(f"\t Evaluation F1 = {f1_score:.2f}, Exact Match (EM) = {exact_match_score:.2f}")
         with open(f"{save_path_prefix}/metrics.csv", 'a') as results_file:
             results_file.write(f"test,{len(test_dataloader.dataset)},{f1_score:.2f},{exact_match_score:.2f}\n")
+        if args.save_test_generation:
+            with open('outputs.csv', 'a') as file:
+                preds = tokenizer.batch_decode(model_pred_tokens, skip_special_tokens=True)
+                for pred in preds:
+                    file.write(f"{pred}\n")
 
     else:
         optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)

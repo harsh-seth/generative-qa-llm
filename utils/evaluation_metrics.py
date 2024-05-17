@@ -1,9 +1,44 @@
-from rouge import Rouge
 from bert_score import score
+from collections import Counter
 from evaluate import load
-
 import google.generativeai as genai
+from rouge import Rouge
+from tqdm import tqdm
 
+def f1_score(prediction_tokens, ground_truth_tokens):
+    common = Counter(prediction_tokens) & Counter(ground_truth_tokens)
+    num_same = sum(common.values())
+    if num_same == 0:
+        return 0
+    precision = 1.0 * num_same / len(prediction_tokens)
+    recall = 1.0 * num_same / len(ground_truth_tokens)
+    f1 = (2 * precision * recall) / (precision + recall)
+    return f1
+
+def exact_match_score(prediction, ground_truth):
+    if len(ground_truth) == len(prediction):
+        if all(token1 == token2 for token1, token2 in zip(ground_truth,prediction)):
+            return 1
+    return 0
+
+def get_eval_scores(tokenizer, predictions, gold_answers):
+    f1 = exact_match = 0
+
+    for ground_truths, prediction in tqdm(zip(gold_answers, predictions)):
+        # Remove pad token
+        tokens_to_remove = {
+            tokenizer.pad_token_id,
+            tokenizer.eos_token_id,
+            tokenizer.bos_token_id,
+            tokenizer.cls_token_id,
+            tokenizer.sep_token_id,
+            tokenizer.mask_token_id
+        }
+        prediction = list(filter(lambda token: token not in tokens_to_remove, prediction))
+        ground_truths = list(filter(lambda token: token not in tokens_to_remove, ground_truths))
+        f1 += f1_score(prediction, ground_truths)
+        exact_match += exact_match_score(prediction, ground_truths)
+    return 100*f1/len(predictions), 100*exact_match/len(predictions)
 
 class EvaluationMetrics():
 
