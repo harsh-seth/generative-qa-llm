@@ -15,13 +15,13 @@ def parse_command_line_arguments():
         description='CLI for training T5 T2T model')
 
     parser.add_argument('--t5_model', type=str, default="t5-base",
-                        help="What type of T5 model do you want use?")
+                        help="What type of T5 model do you want use? (default: 't5-base')")
 
     parser.add_argument('--batch_size', type=int, default=16,
                         help='mini-batch size (default: 16)')
 
     parser.add_argument('--epochs', type=int, default=2,
-                        help='number of training epochs (default: 40)')
+                        help='number of training epochs (default: 2)')
 
     parser.add_argument('--lr', type=float, default=1e-4,
                         help='learning rate (Adam) (default: 1e-4)')
