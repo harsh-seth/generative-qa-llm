@@ -6,7 +6,7 @@ from tqdm import tqdm
 from typing import List, Tuple
 
 def construct_prompt(question, context):
-    return f"question: {question} context: {context}"
+    return f"Answer the following question with provided context\n##Question: {question}\n##Context: {context}\n##Answer:"
 
 class Dataset(torch.utils.data.Dataset):
     def __init__(self, hf_dataset: datasets.arrow_dataset.Dataset, tokenizer):

@@ -1,6 +1,7 @@
 import torch
 
-from transformers import T5Tokenizer, T5ForConditionalGeneration
+from peft import get_peft_model, PeftConfig
+from transformers import T5Tokenizer, AutoModelForSeq2SeqLM
 
 from data.Dataset import construct_prompt
 from data.RACE_Dataset import RaceDataset
@@ -20,10 +21,15 @@ def generateInference(model, tokenizer, input_str):
 if __name__ == '__main__':
     print("Loading model..")
     device = 'cuda'
-    checkpoint_number = 6
-    base_model_name = "t5-base"
-    model = T5ForConditionalGeneration.from_pretrained(f"results/{base_model_name}/checkpoint-{checkpoint_number}/model")
+    checkpoint_number = 2
+    base_model_name = "google/flan-t5-base"
+    
+    model = AutoModelForSeq2SeqLM.from_pretrained(base_model_name)
+    peft_config = PeftConfig.from_pretrained(f"results/{base_model_name}/checkpoint-{checkpoint_number}/model")
+    model = get_peft_model(model, peft_config)
+
     tokenizer = T5Tokenizer.from_pretrained(f"results/{base_model_name}/checkpoint-{checkpoint_number}/tokenizer")
+    
     model.to(device)
     model.eval()
     print("Model loaded.")
