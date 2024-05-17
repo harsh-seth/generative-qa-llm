@@ -30,7 +30,10 @@ Command line arguments: <br>
 7. "max_input_length" - Maximum length of input text
 8. "seed" - Seed for random initialization
 9. "max_records_cut" - Fraction of records to train and validate on
-10. "evaluate_at_epoch" - Resume from checkpoint @ specified epoch number
+10. "resume_from_epoch" - Resume from checkpoint @ specified epoch number
+11. "evaluate" - Evalute (test set) model at epoch (Will skip training)
+12. "num_test_records" - How many records to create the test set from?
+13. "save_test_generation" - Save generated text from test evaluation
 
 
 Command to train the T5-base mode <br>
@@ -48,9 +51,21 @@ Command to train the instruction fine tuned <br>
 python train_sft.py
 ```
 
+### Evaluation on Test set - 
+
+Evaluate finetuned T5-base model on the test set from a specific epoch <br>
+```
+python train.py --batch_size=2 -e --resume_from_epoch=6
+```
+
+Evaluate finetuned Flan-T5-base model (qLoRA) on the test set from a specific epoch <br>
+```
+python train_lora.py --t5_model="google/flan-t5-base" --batch_size=16 -e=2
+```
+
 ### Inference/Testing - 
 
-Command to run the model on test set <br>
+Evaluate the metrics on a smaller test set <br>
 ```
 python inference.py
 ```
