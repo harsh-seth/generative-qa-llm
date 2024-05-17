@@ -10,3 +10,6 @@ git+https://github.com/google-research/bleurt.git
 peft
 bitsandbytes
 accelerate
+xformers
+trl
+unsloth@git+https://github.com/unslothai/unsloth.git
