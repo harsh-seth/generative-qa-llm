@@ -5,7 +5,7 @@ import torch
 from peft import get_peft_model, PeftConfig, prepare_model_for_kbit_training, LoraConfig, TaskType
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from transformers import AutoModelForSeq2SeqLM, BitsAndBytesConfig, T5Tokenizer, set_seed
+from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, BitsAndBytesConfig, set_seed
 
 from data.RACE_Dataset import RaceDataset
 from utils.data_utils import dataset_collator
@@ -13,10 +13,10 @@ from utils.evaluation_metrics import get_eval_scores
 
 def parse_command_line_arguments():
     parser = argparse.ArgumentParser(
-        description='CLI for fine-tuning a T5 Text-to-Text model')
+        description='CLI for fine-tuning a Text-to-Text model')
 
-    parser.add_argument('--t5_model', type=str, default="google/flan-t5-base",
-                        help="What type of T5 model do you want use? (default: 'google/flan-t5-base')")
+    parser.add_argument('--base_model', type=str, default="google/flan-t5-base",
+                        help="What base model do you want use? (default: 'google/flan-t5-base')")
 
     parser.add_argument('--batch_size', type=int, default=16,
                         help='mini-batch size (default: 16)')
@@ -169,12 +169,12 @@ if __name__ == '__main__':
     # Set seed
     set_seed(args.seed)
 
-    save_path_prefix = f"results/{args.t5_model}"
+    save_path_prefix = f"results/{args.base_model}"
     if not os.path.exists(save_path_prefix):
         os.makedirs(save_path_prefix)
 
     bnb_config = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_compute_dtype=torch.bfloat16, bnb_4bit_use_double_quant=True, bnb_4bit_quant_type="nf4")
-    model = AutoModelForSeq2SeqLM.from_pretrained(args.t5_model, quantization_config=bnb_config, device_map="auto")
+    model = AutoModelForSeq2SeqLM.from_pretrained(args.base_model, quantization_config=bnb_config, device_map="auto")
     peft_config = None
 
     # Can either train the model, or evaluate it
@@ -192,7 +192,7 @@ if __name__ == '__main__':
 
     model = get_peft_model(model, peft_config)
     model.print_trainable_parameters()
-    tokenizer = T5Tokenizer.from_pretrained(f"{save_path_prefix}/checkpoint-{args.evaluate_at_epoch}/tokenizer" if args.evaluate_at_epoch else args.t5_model)
+    tokenizer = AutoTokenizer.from_pretrained(f"{save_path_prefix}/checkpoint-{args.evaluate_at_epoch}/tokenizer" if args.evaluate_at_epoch else args.base_model)
 
     raceDataset = RaceDataset()
     train_set = raceDataset.get_dataset('train', num_records=int(80292*args.max_records_cut))
