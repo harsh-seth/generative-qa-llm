@@ -1,7 +1,7 @@
 import torch
 
 from peft import get_peft_model, PeftConfig
-from transformers import AutoModelForSeq2SeqLM, T5Tokenizer, T5ForConditionalGeneration
+from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 from utils.evaluation_metrics import EvaluationMetrics
 
 from data.RACE_Dataset import RaceDataset
@@ -22,15 +22,18 @@ if __name__ == '__main__':
     print("Loading model..")
     device = 'cuda'
     base_model_name = "t5-base"
-    checkpoint_number = 6
-    tokenizer = T5Tokenizer.from_pretrained(f"results/{base_model_name}/tokenizer/checkpoint-{checkpoint_number}")
-    model = T5ForConditionalGeneration.from_pretrained(f"results/{base_model_name}/model/checkpoint-{checkpoint_number}")
+    tokenizer = AutoTokenizer.from_pretrained(base_model_name)
+    model = AutoModelForSeq2SeqLM.from_pretrained(base_model_name)
+
+    # checkpoint_number = 4
+    # model = AutoModelForSeq2SeqLM.from_pretrained(f"results/{base_model_name}/model/checkpoint-{checkpoint_number}")
+    # tokenizer = AutoTokenizer.from_pretrained(f"results/{base_model_name}/tokenizer/checkpoint-{checkpoint_number}")
 
     # # # for PEFT models
     # model = AutoModelForSeq2SeqLM.from_pretrained(base_model_name)
     # peft_config = PeftConfig.from_pretrained(f"results/{base_model_name}/checkpoint-{checkpoint_number}/model")
     # model = get_peft_model(model, peft_config)
-    # tokenizer = T5Tokenizer.from_pretrained(f"results/{base_model_name}/checkpoint-{checkpoint_number}/tokenizer")
+    # tokenizer = AutoTokenizer.from_pretrained(f"results/{base_model_name}/checkpoint-{checkpoint_number}/tokenizer")
 
     print("Model loaded.")
     model.to(device)
@@ -42,8 +45,10 @@ if __name__ == '__main__':
     print("Dataset loaded.")
 
     print("Performing inference..")
-    for idx in range(0, 10):
-        print("\n-----\n")
+
+    start_idx=0; num_records = 10
+    for idx in range(start_idx, start_idx+num_records):
+        print(f"\n--[{1+idx-start_idx}/{num_records}]--\n")
         question = raceDataset.get_questions('test')[idx]
         context = raceDataset.get_context('test')[idx]
         correct_answer = raceDataset.get_answer('test')[idx]
@@ -55,6 +60,6 @@ if __name__ == '__main__':
 
         eval_metric = EvaluationMetrics(output_str, correct_answer)
         print("Rouge score: ", eval_metric.get_rouge_score())
-        # print("Bluert score: ", eval_metric.get_bleurt_score())
-        # print('LLM Evaluation: ', eval_metric.LLM_evaluation())
+        # print("Bleurt score: ", eval_metric.get_bleurt_score())
+        # print("Gemini score: ", eval_metric.get_gemini_score())
         print("\n-----\n")

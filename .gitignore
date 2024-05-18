@@ -164,3 +164,4 @@ results/
 checkpoints/
 
 API_KEY.txt
+*.tar.gz

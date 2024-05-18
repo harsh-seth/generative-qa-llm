@@ -41,7 +41,6 @@ def get_eval_scores(tokenizer, predictions, gold_answers):
     return 100*f1/len(predictions), 100*exact_match/len(predictions)
 
 class EvaluationMetrics():
-
     def __init__(self, pred, actual):
         self.pred = pred
         self.actual = actual
@@ -53,10 +52,8 @@ class EvaluationMetrics():
 
     # def get_bleurt_score(self):
     #     metric = load("bleurt")
-    #     # metric = datasets.load_metric("bleurt")
     #     results = metric.compute(predictions = [self.pred], references = [self.actual])
     #     return results["scores"][0]
-
 
     def get_bert_score(self):
 
@@ -77,7 +74,7 @@ class EvaluationMetrics():
         # Step 3: Print or use the BERTScore values
         return p.mean().item(), r.mean().item(), f1.mean().item()
 
-    def LLM_evaluation(self):
+    def get_gemini_score(self):
         file_path = 'API_KEY.txt'
         with open(file_path, 'r') as file:
             api_key = file.read().strip() 
@@ -139,6 +136,4 @@ class EvaluationMetrics():
         On a scale of 0-5, evaluate the degree of similarity between the predicted answer and the correct answer. Please give just a number for your score"""
         response = model.generate_content(f"Predicted Answer: {self.pred} \n Correct Answer: {self.actual}. \n {prompt}")
 
-        return response.text
-
-
+        return int(response.text)
