@@ -13,10 +13,10 @@ from utils.evaluation_metrics import get_eval_scores
 def parse_command_line_arguments():
 
     parser = argparse.ArgumentParser(
-        description='CLI for training T5 T2T model')
+        description='CLI for training a Text-to-Text model')
 
-    parser.add_argument('--t5_model', type=str, default="t5-base",
-                        help="What type of T5 model do you want use? (default: 't5-base')")
+    parser.add_argument('--base_model', type=str, default="t5-base",
+                        help="What base model do you want use? (default: 't5-base')")
 
     parser.add_argument('--batch_size', type=int, default=16,
                         help='mini-batch size (default: 16)')
@@ -34,7 +34,7 @@ def parse_command_line_arguments():
                         help='device to be used for computations (in {cpu, cuda:0, cuda:1, ...}, default: cpu)')
 
     parser.add_argument('--max_input_length', type=int, default=512,
-                        help='Maximum lenght of input text, (default: 512, maximum admitted: 512)')
+                        help='Maximum length of input text, (default: 512, maximum admitted: 512)')
 
     parser.add_argument('--seed', type=int, default=7,
                         help='Seed for random initialization (default: 7)')
@@ -168,12 +168,12 @@ if __name__ == '__main__':
 
     # Set seed
     set_seed(args.seed)
-    save_path_prefix = f"results/{args.t5_model}"
+    save_path_prefix = f"results/{args.base_model}"
     if not os.path.exists(save_path_prefix):
         os.makedirs(save_path_prefix)
 
-    model = AutoModelForSeq2SeqLM.from_pretrained(f"{save_path_prefix}/model/checkpoint-{args.resume_from_epoch}" if args.resume_from_epoch else args.t5_model)
-    tokenizer = AutoTokenizer.from_pretrained(f"{save_path_prefix}/tokenizer/checkpoint-{args.resume_from_epoch}" if args.resume_from_epoch else args.t5_model)
+    model = AutoModelForSeq2SeqLM.from_pretrained(f"{save_path_prefix}/model/checkpoint-{args.resume_from_epoch}" if args.resume_from_epoch else args.base_model)
+    tokenizer = AutoTokenizer.from_pretrained(f"{save_path_prefix}/tokenizer/checkpoint-{args.resume_from_epoch}" if args.resume_from_epoch else args.base_model)
     model.to(args.device)
     # creating the optimizer
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)

@@ -3,7 +3,7 @@
 An attempt to solve a traditionally Extractive QA task with Generative Text methods.
 
 ### Objective
-Our objective is to fine-tune state-of-the-art Pretrained Language Models on the RACE (ReAding Comprehension from Examinations)dataset without providing multiple-choice answer options.
+Our objective is to fine-tune state-of-the-art Pretrained Language Models on the RACE (ReAding Comprehension from Examinations) dataset without providing multiple-choice answer options.
 
 ### Requirements - 
 To download all package requirements.
@@ -21,7 +21,7 @@ pip install -r requirements.txt
 
 Command line arguments: <br>
 
-1. "t5_model" - T5 model to finetune <br>
+1. "base_model" - Base model to finetune <br>
 2. "batch_size" - Batch size for the training <br>
 3. "epochs" - Number of epochs to train <br>
 4. "lr" - Learning rate
@@ -36,31 +36,31 @@ Command line arguments: <br>
 13. "save_test_generation" - Save generated text from test evaluation
 
 
-Command to train the T5-base mode <br>
+Command to train a base model with no optimizations<br>
 ```
-python train.py --epochs=6 --t5_model="t5-base" --batch_size=8
-```
-
-Command to train the flan-t5-base with qLoRA <br>
-```
-python train_lora.py --epochs=4 --t5_model="google/flan-t5-base" --batch_size=16 -e=2
+python train.py --epochs=6 --base_model="t5-base" --batch_size=8
 ```
 
-Command to train the instruction fine tuned <br>
+Command to train a base model with qLoRA<br>
+```
+python train_lora.py --epochs=4 --base_model="google/flan-t5-base" --batch_size=16
+```
+
+Command to train perform SFT training on base model with Unsloth and qLoRA optimizations<br>
 ```
 python train_sft.py
 ```
 
 ### Evaluation on Test set - 
 
-Evaluate finetuned T5-base model on the test set from a specific epoch <br>
+Evaluate a finetuned model on the test set from a specific epoch <br>
 ```
-python train.py --batch_size=2 -e --resume_from_epoch=6
+python train.py --base_model="t5-base" --batch_size=2 -e --resume_from_epoch=6
 ```
 
-Evaluate finetuned Flan-T5-base model (qLoRA) on the test set from a specific epoch <br>
+Evaluate a finetuned model with qLoRA on the test set from a specific epoch <br>
 ```
-python train_lora.py --t5_model="google/flan-t5-base" --batch_size=16 -e=2
+python train_lora.py --base_model="google/flan-t5-base" --batch_size=16 -e=2
 ```
 
 ### Inference/Testing - 
